@@ -15,13 +15,13 @@
 
   var ACTIVITES_DEFAULT = [
     { id: "corde", nom: "Corde à sauter", emoji: "🪢", couleur: "#ff5b45", unite: "min" },
-    { id: "pilates", nom: "Pilates", emoji: "🧘‍♀️", couleur: "#0f7a6b", unite: "min" },
-    { id: "running", nom: "Running", emoji: "🏃‍♀️", couleur: "#e8a53d", unite: "km" },
-    { id: "muscu", nom: "Muscu", emoji: "🏋️‍♀️", couleur: "#5b6ee8", unite: "min" },
+    { id: "pilates", nom: "Pilates", emoji: "🤸", couleur: "#0f7a6b", unite: "min" },
+    { id: "running", nom: "Running", emoji: "🏃", couleur: "#e8a53d", unite: "km" },
+    { id: "muscu", nom: "Muscu", emoji: "🏋️", couleur: "#5b6ee8", unite: "min" },
     { id: "yoga", nom: "Yoga", emoji: "🧘", couleur: "#c17bd6", unite: "min" },
-    { id: "velo", nom: "Vélo", emoji: "🚴‍♀️", couleur: "#2fa8c9", unite: "km" },
-    { id: "marche", nom: "Marche", emoji: "🚶‍♀️", couleur: "#8a8578", unite: "min" },
-    { id: "natation", nom: "Natation", emoji: "🏊‍♀️", couleur: "#1b8fd1", unite: "min" }
+    { id: "velo", nom: "Vélo", emoji: "🚴", couleur: "#2fa8c9", unite: "km" },
+    { id: "marche", nom: "Marche", emoji: "🚶", couleur: "#8a8578", unite: "min" },
+    { id: "natation", nom: "Natation", emoji: "🏊", couleur: "#1b8fd1", unite: "min" }
   ];
 
   var UNITES = { min: "min", km: "km" };
@@ -166,11 +166,17 @@
 
   function topbarHTML() {
     var titles = { semaine: "Cette semaine", programme: "Mon programme", journal: "Journal" };
+    var subtitles = {
+      semaine: capitalize(WEEKDAYS[(todayDate().getDay() + 6) % 7]) + " " + dLabel(todayDate()),
+      programme: "Ce que tu prévois de faire chaque semaine",
+      journal: "Ce que tu as vraiment fait, séance par séance"
+    };
     return (
-      '<div class="topbar"><div class="brand"><span class="flame">🏋️‍♀️</span><h1>' + titles[state.tab] + "</h1></div>" +
+      '<div class="topbar"><div class="brand"><h1>' + titles[state.tab] + "</h1><p>" + subtitles[state.tab] + "</p></div>" +
       '<button class="icon-btn" data-action="open-settings" aria-label="Réglages">⚙️</button></div>'
     );
   }
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
   function tabbarHTML() {
     function t(id, ic, label) {
@@ -254,7 +260,7 @@
     } else {
       statusBtn = '<button class="chip log" data-action="log-creneau" data-id="' + c.id + '" data-date="' + todayISO() + '">Logger</button>';
     }
-    return '<div class="slot"><div class="slot-emoji" style="background:' + a.couleur + '22">' + a.emoji + '</div>' +
+    return '<div class="slot" style="border-left:3px solid ' + a.couleur + '"><div class="slot-emoji">' + a.emoji + '</div>' +
       '<div class="slot-body"><div class="slot-name">' + esc(a.nom) + '</div><div class="slot-target">Objectif : ' + fmtVal(c.valeur, a.unite) + (c.note ? " · " + esc(c.note) : "") + '</div></div>' +
       '<div class="slot-status">' + statusBtn + "</div></div>";
   }
@@ -290,7 +296,7 @@
   function creneauListItem(c) {
     var a = activiteById(c.activiteId);
     if (!a) return "";
-    return '<div class="list-item"><div class="emoji" style="background:' + a.couleur + '22">' + a.emoji + '</div>' +
+    return '<div class="list-item" style="border-left:3px solid ' + a.couleur + '"><div class="emoji">' + a.emoji + '</div>' +
       '<div class="info"><div class="t">' + esc(a.nom) + '</div><div class="s">Objectif : ' + fmtVal(c.valeur, a.unite) + (c.note ? " · " + esc(c.note) : "") + '</div></div>' +
       '<div class="actions"><button class="ghost-btn" data-action="edit-creneau" data-id="' + c.id + '">✎</button>' +
       '<button class="ghost-btn" data-action="del-creneau" data-id="' + c.id + '">🗑️</button></div></div>';
@@ -325,7 +331,7 @@
     var a = activiteById(e.activiteId);
     if (!a) return "";
     var feel = FEELINGS.filter(function (f) { return f.v === e.ressenti; })[0];
-    return '<div class="entry"><div class="emoji" style="background:' + a.couleur + '22">' + a.emoji + '</div>' +
+    return '<div class="entry" style="border-left:3px solid ' + a.couleur + '"><div class="emoji">' + a.emoji + '</div>' +
       '<div class="body"><div class="top"><span class="name">' + esc(a.nom) + (feel ? '<span class="feel">' + feel.e + '</span>' : "") + '</span></div>' +
       '<div class="meta">' + fmtVal(e.valeur, a.unite) + (e.creneauId ? " · séance prévue" : "") + '</div>' +
       (e.note ? '<div class="note">' + esc(e.note) + "</div>" : "") + '</div>' +
@@ -343,7 +349,7 @@
   }
 
   function sheetWrap(title, body) {
-    return '<div class="overlay" data-action="close-modal"><div class="sheet" onclick="event.stopPropagation()">' +
+    return '<div class="overlay"><div class="sheet"><div class="grabber"></div>' +
       '<div class="sheet-head"><h3>' + title + '</h3><button class="icon-btn" data-action="close-modal">✕</button></div>' + body + "</div></div>";
   }
 
@@ -354,14 +360,12 @@
     });
     html += '<button type="button" class="add-new" data-action="toggle-new-activite">+ Nouvelle</button></div>';
     html += '<input type="hidden" name="' + name + '" id="activite-hidden" value="' + esc(selectedId || "") + '">';
-    if (state.newActivite) {
-      html += '<div class="field" style="margin-top:12px"><label>Nouvelle activité</label>' +
-        '<div class="row2"><input type="text" id="na-emoji" maxlength="4" placeholder="🤸" style="flex:0 0 60px;text-align:center">' +
-        '<input type="text" id="na-nom" placeholder="Nom de l\'activité" style="flex:2"></div>' +
-        '<div class="row2" style="margin-top:8px">' +
-        '<select id="na-unite"><option value="min">minutes</option><option value="km">kilomètres</option></select>' +
-        '<button type="button" class="btn btn-secondary" data-action="add-activite">Ajouter</button></div></div>';
-    }
+    html += '<div class="field new-activite-box hidden" id="new-activite-box" style="margin-top:12px"><label>Nouvelle activité</label>' +
+      '<div class="row2"><input type="text" id="na-emoji" maxlength="4" placeholder="🤸" style="flex:0 0 60px;text-align:center">' +
+      '<input type="text" id="na-nom" placeholder="Nom de l\'activité" style="flex:2"></div>' +
+      '<div class="row2" style="margin-top:8px">' +
+      '<select id="na-unite"><option value="min">minutes</option><option value="km">kilomètres</option></select>' +
+      '<button type="button" class="btn btn-secondary" data-action="add-activite">Ajouter</button></div></div>';
     return html;
   }
 
@@ -373,7 +377,7 @@
     return '<form data-form="creneau" data-id="' + (data.id || "") + '">' +
       '<div class="field"><label>Jour</label><div class="day-select">' + jourBtns + "</div><input type=\"hidden\" name=\"jour\" id=\"jour-hidden\" value=\"" + (data.jour === null ? "" : data.jour) + '"></div>' +
       '<div class="field"><label>Activité</label>' + activiteChipSelect(data.activiteId, "activiteId") + '</div>' +
-      '<div class="field"><label>Objectif</label><input type="number" step="0.1" min="0" name="valeur" placeholder="Ex : 20" value="' + esc(data.valeur) + '" required></div>' +
+      '<div class="field"><label>Objectif <span id="valeur-unit" class="unit-badge">' + (activiteById(data.activiteId) || {}).unite + '</span></label><input type="number" step="0.1" min="0" name="valeur" placeholder="Ex : 20" value="' + esc(data.valeur) + '" required></div>' +
       '<div class="field"><label>Note (optionnel)</label><input type="text" name="note" placeholder="Ex : 3 x 15 min" value="' + esc(data.note) + '"></div>' +
       '<button class="btn btn-primary btn-block" type="submit">' + (data.id ? "Mettre à jour" : "Ajouter au programme") + "</button></form>";
   }
@@ -386,7 +390,7 @@
     return '<form data-form="journal" data-id="' + (data.id || "") + '" data-creneau="' + (data.creneauId || "") + '">' +
       '<div class="field"><label>Date</label><input type="date" name="date" value="' + data.date + '" required></div>' +
       '<div class="field"><label>Activité</label>' + activiteChipSelect(data.activiteId, "activiteId") + '</div>' +
-      '<div class="field"><label>Réalisé</label><input type="number" step="0.1" min="0" name="valeur" placeholder="Ex : 18" value="' + esc(data.valeur) + '" required></div>' +
+      '<div class="field"><label>Réalisé <span id="valeur-unit" class="unit-badge">' + (activiteById(data.activiteId) || {}).unite + '</span></label><input type="number" step="0.1" min="0" name="valeur" placeholder="Ex : 18" value="' + esc(data.valeur) + '" required></div>' +
       '<div class="field"><label>Ressenti</label><div class="feel-select" id="feel-select">' + feelBtns + '</div><input type="hidden" name="ressenti" id="feel-hidden" value="' + (data.ressenti || "") + '"></div>' +
       '<div class="field"><label>Note (optionnel)</label><textarea name="note" placeholder="Comment ça s\'est passé ?">' + esc(data.note) + '</textarea></div>' +
       '<button class="btn btn-primary btn-block" type="submit">' + (data.id ? "Mettre à jour" : "Enregistrer") + "</button></form>";
@@ -400,6 +404,9 @@
 
   // ---------- events ----------
   document.addEventListener("click", function (ev) {
+    if (ev.target.classList && ev.target.classList.contains("overlay")) {
+      state.modal = null; state.newActivite = false; R(); return;
+    }
     var t = ev.target.closest("[data-action]");
     if (t) {
       var action = t.getAttribute("data-action");
@@ -430,7 +437,11 @@
         state.modal = { type: "journal", data: { id: null, date: t.getAttribute("data-date"), activiteId: cr.activiteId, valeur: cr.valeur, note: "", ressenti: null, creneauId: cr.id } };
         R(); return;
       }
-      if (action === "toggle-new-activite") { state.newActivite = !state.newActivite; R(); return; }
+      if (action === "toggle-new-activite") {
+        var box = document.getElementById("new-activite-box");
+        if (box) box.classList.toggle("hidden");
+        return;
+      }
       if (action === "add-activite") { addActivite(); return; }
       if (action === "export") { exportData(); return; }
       if (action === "reset") { resetData(); return; }
@@ -448,7 +459,11 @@
       var host = pickAct.closest("#activite-chips");
       host.querySelectorAll("button[data-pick-activite]").forEach(function (b) { b.classList.remove("sel"); });
       pickAct.classList.add("sel");
-      host.parentNode.querySelector("#activite-hidden").value = pickAct.getAttribute("data-pick-activite");
+      var pickedId = pickAct.getAttribute("data-pick-activite");
+      host.parentNode.querySelector("#activite-hidden").value = pickedId;
+      var picked = activiteById(pickedId);
+      var unitBadge = host.closest("form").querySelector("#valeur-unit");
+      if (unitBadge && picked) unitBadge.textContent = picked.unite;
       return;
     }
     var pickFeel = ev.target.closest("[data-pick-feel]");
@@ -501,6 +516,33 @@
     if (ev.target && ev.target.id === "import-file") importData(ev.target.files[0]);
   });
 
+  function captureModalFormState() {
+    var form = document.querySelector("#modal-host form[data-form]");
+    if (!form || !state.modal) return;
+    var type = form.getAttribute("data-form");
+    var fd = new FormData(form);
+    if (type === "creneau") {
+      var jourRaw = fd.get("jour");
+      state.modal.data = {
+        id: form.getAttribute("data-id") || null,
+        jour: jourRaw === "" || jourRaw === null ? null : Number(jourRaw),
+        activiteId: fd.get("activiteId"),
+        valeur: fd.get("valeur"),
+        note: fd.get("note")
+      };
+    } else if (type === "journal") {
+      state.modal.data = {
+        id: form.getAttribute("data-id") || null,
+        date: fd.get("date"),
+        activiteId: fd.get("activiteId"),
+        valeur: fd.get("valeur"),
+        note: fd.get("note"),
+        ressenti: fd.get("ressenti") ? Number(fd.get("ressenti")) : null,
+        creneauId: form.getAttribute("data-creneau") || null
+      };
+    }
+  }
+
   function addActivite() {
     var nom = (document.getElementById("na-nom").value || "").trim();
     var emoji = (document.getElementById("na-emoji").value || "🏃").trim() || "🏃";
@@ -509,12 +551,11 @@
     var palette = ["#ff5b45", "#0f7a6b", "#e8a53d", "#5b6ee8", "#c17bd6", "#2fa8c9", "#8a8578", "#1b8fd1"];
     var couleur = palette[state.activites.length % palette.length];
     var a = { id: uid(), nom: nom, emoji: emoji, unite: unite, couleur: couleur };
+    captureModalFormState();
     state.activites.push(a);
     save();
-    state.newActivite = false;
+    if (state.modal && state.modal.data) state.modal.data.activiteId = a.id;
     R();
-    var chip = document.querySelector('[data-pick-activite="' + a.id + '"]');
-    if (chip) chip.click();
     toast("Activité ajoutée");
   }
 
