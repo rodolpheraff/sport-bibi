@@ -129,6 +129,10 @@
     return arr;
   }
   function dLabel(d) { return d.getDate() + " " + MONTHS_SHORT[d.getMonth()]; }
+  function weekOffsetOf(dateStr) {
+    var a = getMonday(todayDate()), b = getMonday(parseISO(dateStr));
+    return Math.round((b - a) / 604800000);
+  }
   function jourIdx(d) { return (d.getDay() + 6) % 7; }
   function isToday(d) { return iso(d) === todayISO(); }
 
@@ -149,8 +153,19 @@
     return (Number.isInteger(n) ? n : Math.round(n * 10) / 10) + " " + (UNITES[unite] || unite || "");
   }
   function feelOf(v) { for (var i = 0; i < FEELINGS.length; i++) if (FEELINGS[i].v === v) return FEELINGS[i]; return null; }
-  function creneauxDuJour(idx) { return state.programme.filter(function (c) { return c.jour === idx; }); }
-  function creneauxLibres() { return state.programme.filter(function (c) { return c.jour === null; }); }
+  function creneauxLibres() { return state.programme.filter(function (c) { return c.jour === null && !c.date; }); }
+  function creneauxPonctuels() {
+    return state.programme.filter(function (c) { return !!c.date; })
+      .sort(function (a, b) { return a.date.localeCompare(b.date); });
+  }
+  /* Séances prévues pour une date : les ponctuelles posées ce jour-là,
+     puis les récurrentes de ce jour de la semaine. */
+  function creneauxPourDate(dateObj) {
+    var s = iso(dateObj), idx = jourIdx(dateObj);
+    return state.programme.filter(function (c) { return c.date === s; })
+      .concat(state.programme.filter(function (c) { return !c.date && c.jour === idx; }));
+  }
+  function isFuture(dateObj) { return iso(dateObj) > todayISO(); }
   function journalForDay(dateObj) {
     var s = iso(dateObj);
     return state.journal.filter(function (e) { return e.date === s; });
@@ -163,7 +178,7 @@
     var entries = journalForDay(dateObj);
     var used = {};
     var byCreneau = {};
-    var cx = creneauxDuJour(jourIdx(dateObj));
+    var cx = creneauxPourDate(dateObj);
     cx.forEach(function (c) {
       for (var i = 0; i < entries.length; i++) {
         if (!used[entries[i].id] && entries[i].creneauId === c.id) { byCreneau[c.id] = entries[i]; used[entries[i].id] = 1; return; }
@@ -189,11 +204,16 @@
   }
 
   function weekSummary(dates) {
-    var planned = 0, done = 0, minutes = 0, km = 0, sessions = 0;
+    var planned = 0, done = 0, minutes = 0, km = 0, sessions = 0, planMin = 0, planKm = 0;
     dates.forEach(function (d) {
       var m = dayMatch(d);
       planned += m.creneaux.length;
-      m.creneaux.forEach(function (c) { if (m.byCreneau[c.id]) done++; });
+      m.creneaux.forEach(function (c) {
+        if (m.byCreneau[c.id]) done++;
+        var ac = activiteById(c.activiteId);
+        if (ac && ac.unite === "km") planKm += Number(c.valeur) || 0;
+        else planMin += Number(c.valeur) || 0;
+      });
       journalForDay(d).forEach(function (e) {
         sessions++;
         var a = activiteById(e.activiteId);
@@ -201,7 +221,11 @@
         else minutes += Number(e.valeur) || 0;
       });
     });
-    return { planned: planned, done: done, minutes: Math.round(minutes), km: Math.round(km * 10) / 10, sessions: sessions };
+    return {
+      planned: planned, done: done, sessions: sessions,
+      minutes: Math.round(minutes), km: Math.round(km * 10) / 10,
+      planMin: Math.round(planMin), planKm: Math.round(planKm * 10) / 10
+    };
   }
 
   // ---------- toast (avec action optionnelle) ----------
@@ -275,25 +299,33 @@
     var mon = dates[0], sun = dates[6];
     var label = state.weekOffset === 0 ? "Cette semaine"
       : state.weekOffset === -1 ? "Semaine dernière"
-        : dLabel(mon) + " au " + dLabel(sun);
+        : state.weekOffset === 1 ? "Semaine prochaine"
+          : dLabel(mon) + " au " + dLabel(sun);
 
+    var futurWeek = state.weekOffset > 0;
     var C = 2 * Math.PI * 34;
     var html = '<div class="hero">' +
       '<div class="hero-top"><span class="week-label">' + label + "</span>" +
       '<div class="week-nav">' +
       '<button data-action="week" data-dir="-1" aria-label="Semaine précédente">' + ic("left") + "</button>" +
-      '<button data-action="week" data-dir="1" aria-label="Semaine suivante"' + (state.weekOffset >= 0 ? " disabled" : "") + ">" + ic("right") + "</button>" +
+      '<button data-action="week" data-dir="1" aria-label="Semaine suivante">' + ic("right") + "</button>" +
       "</div></div>" +
       '<div class="hero-body">' +
       '<div class="ring-wrap"><svg class="ring" viewBox="0 0 80 80">' +
       '<circle class="bg" cx="40" cy="40" r="34"/>' +
-      '<circle class="fg" cx="40" cy="40" r="34" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct / 100)).toFixed(1) + '"/>' +
+      '<circle class="fg' + (futurWeek ? " plan" : "") + '" cx="40" cy="40" r="34" stroke-dasharray="' + C.toFixed(1) +
+      '" stroke-dashoffset="' + (C * (1 - (futurWeek ? (goal ? 100 : 0) : pct) / 100)).toFixed(1) + '"/>' +
       "</svg>" +
-      '<div class="ring-txt"><span class="n">' + (goal ? sum.done + "/" + goal : sum.sessions) + '</span><span class="l">' + (goal ? "prévu" : "séances") + "</span></div></div>" +
+      '<div class="ring-txt"><span class="n">' + (futurWeek ? goal : (goal ? sum.done + "/" + goal : sum.sessions)) +
+      '</span><span class="l">' + (futurWeek ? "pr\u00e9vues" : (goal ? "pr\u00e9vu" : "s\u00e9ances")) + "</span></div></div>" +
       '<div class="hero-facts">' +
-      '<div class="fact">' + ic("spark") + "<span><b>" + sum.sessions + "</b> séance" + (sum.sessions > 1 ? "s" : "") + " au total</span></div>" +
-      '<div class="fact">' + ic("clock") + "<span><b>" + sum.minutes + "</b> min" + (sum.km ? " · <b>" + sum.km + "</b> km" : "") + "</span></div>" +
-      '<div class="fact streak' + (streak ? "" : " muted") + '">' + ic("flame") + "<span>" + (streak ? "<b>" + streak + "</b> jour" + (streak > 1 ? "s" : "") + " de suite" : "Aucune série en cours") + "</span></div>" +
+      (futurWeek
+        ? '<div class="fact">' + ic("spark") + "<span><b>" + goal + "</b> s\u00e9ance" + (goal > 1 ? "s" : "") + " au programme</span></div>" +
+          '<div class="fact">' + ic("target") + "<span><b>" + sum.planMin + "</b> min" + (sum.planKm ? " \u00b7 <b>" + sum.planKm + "</b> km" : "") + " vis\u00e9" + (sum.planKm ? "s" : "") + "</span></div>" +
+          '<div class="fact muted">' + ic("calendar") + "<span>" + (goal ? "\u00c0 valider le moment venu" : "Rien de pr\u00e9vu pour l\u2019instant") + "</span></div>"
+        : '<div class="fact">' + ic("spark") + "<span><b>" + sum.sessions + "</b> s\u00e9ance" + (sum.sessions > 1 ? "s" : "") + " au total</span></div>" +
+          '<div class="fact">' + ic("clock") + "<span><b>" + sum.minutes + "</b> min" + (sum.km ? " \u00b7 <b>" + sum.km + "</b> km" : "") + "</span></div>" +
+          '<div class="fact streak' + (streak ? "" : " muted") + '">' + ic("flame") + "<span>" + (streak ? "<b>" + streak + "</b> jour" + (streak > 1 ? "s" : "") + " de suite" : "Aucune s\u00e9rie en cours") + "</span></div>") +
       "</div></div></div>";
 
     if (!state.programme.length && !state.journal.length) {
@@ -315,7 +347,9 @@
     }
 
     html += sparkHTML();
-    return html + fabHTML("new-journal", "Logger");
+    return html + (futurWeek
+      ? '<div class="fab-spacer"></div><button class="fab" data-action="plan-day" data-date="' + openIso + '">' + ic("plus") + "<span>Planifier</span></button>"
+      : fabHTML("new-journal", "Logger"));
   }
 
   function dayCardHTML(d, open) {
@@ -335,10 +369,11 @@
       if (a) mini += '<span class="dot done">' + a.emoji + "</span>";
     });
 
-    var count = m.creneaux.length
-      ? doneCount + "/" + m.creneaux.length
-      : (totalLogged ? "+" + totalLogged : "");
-    var allDone = m.creneaux.length ? doneCount === m.creneaux.length : totalLogged > 0;
+    var futur = isFuture(d);
+    var count = futur
+      ? (m.creneaux.length ? String(m.creneaux.length) : "")
+      : (m.creneaux.length ? doneCount + "/" + m.creneaux.length : (totalLogged ? "+" + totalLogged : ""));
+    var allDone = !futur && (m.creneaux.length ? doneCount === m.creneaux.length : totalLogged > 0);
 
     var h = '<div class="day' + (today ? " is-today" : "") + (open ? " open" : "") + '">' +
       '<button class="day-head" data-action="toggle-day" data-date="' + iso(d) + '" aria-expanded="' + (open ? "true" : "false") + '">' +
@@ -356,7 +391,9 @@
       }
       m.creneaux.forEach(function (c) { h += slotHTML(c, d, m.byCreneau[c.id]); });
       m.extras.forEach(function (e) { h += extraSlotHTML(e); });
-      h += '<button class="row-add" data-action="new-journal" data-date="' + iso(d) + '">' + ic("plus") + "Ajouter une séance</button>";
+      h += futur
+        ? '<button class="row-add" data-action="plan-day" data-date="' + iso(d) + '">' + ic("plus") + "Planifier une séance</button>"
+        : '<button class="row-add" data-action="new-journal" data-date="' + iso(d) + '">' + ic("plus") + "Ajouter une séance</button>";
       h += "</div>";
     }
     return h + "</div>";
@@ -366,21 +403,29 @@
     var a = activiteById(c.activiteId);
     if (!a) return "";
     var done = !!entry;
+    var futur = dateObj ? isFuture(dateObj) : false;
     var dateStr = dateObj ? iso(dateObj) : todayISO();
     var feel = done ? feelOf(entry.ressenti) : null;
     var sub = done
       ? "Fait · " + fmtVal(entry.valeur, a.unite) + (entry.note ? " · " + esc(entry.note) : "")
       : "Objectif " + fmtVal(c.valeur, a.unite) + (c.note ? " · " + esc(c.note) : "");
 
-    return '<div class="slot' + (done ? " is-done" : "") + '" style="box-shadow:inset 3px 0 0 ' + a.couleur + '">' +
-      '<button class="slot-check' + (done ? " done" : "") + '" data-action="' + (done ? "undo-done" : "quick-done") + '"' +
-      ' data-id="' + c.id + '" data-date="' + dateStr + '"' + (done ? ' data-entry="' + entry.id + '"' : "") +
-      ' aria-pressed="' + done + '" aria-label="' + (done ? "Annuler" : "Marquer comme fait") + " : " + esc(a.nom) + '">' + ic("check") + "</button>" +
-      '<button class="slot-main" data-action="' + (done ? "edit-journal" : "log-creneau") + '" data-id="' + (done ? entry.id : c.id) + '" data-date="' + dateStr + '">' +
-      '<span class="slot-name"><span class="emo">' + a.emoji + "</span>" + esc(a.nom) +
+    var left = futur
+      ? '<span class="slot-check futur" aria-hidden="true">' + a.emoji + "</span>"
+      : '<button class="slot-check' + (done ? " done" : "") + '" data-action="' + (done ? "undo-done" : "quick-done") + '"' +
+        ' data-id="' + c.id + '" data-date="' + dateStr + '"' + (done ? ' data-entry="' + entry.id + '"' : "") +
+        ' aria-pressed="' + done + '" aria-label="' + (done ? "Annuler" : "Marquer comme fait") + " : " + esc(a.nom) + '">' + ic("check") + "</button>";
+
+    var mainAction = futur ? "edit-creneau" : (done ? "edit-journal" : "log-creneau");
+    var mainId = futur ? c.id : (done ? entry.id : c.id);
+
+    return '<div class="slot' + (done ? " is-done" : "") + (futur ? " is-futur" : "") + '" style="box-shadow:inset 3px 0 0 ' + a.couleur + '">' +
+      left +
+      '<button class="slot-main" data-action="' + mainAction + '" data-id="' + mainId + '" data-date="' + dateStr + '">' +
+      '<span class="slot-name">' + (futur ? "" : '<span class="emo">' + a.emoji + "</span>") + esc(a.nom) +
       (feel ? '<span class="feel">' + feel.e + "</span>" : "") + "</span>" +
       '<span class="slot-sub">' + sub + "</span></button>" +
-      (dateObj ? "" : '<span class="slot-tag">libre</span>') +
+      (dateObj ? (c.date ? '<span class="slot-tag">1 fois</span>' : "") : '<span class="slot-tag">libre</span>') +
       "</div>";
   }
 
@@ -425,11 +470,11 @@
         '<button class="btn btn-primary" data-action="open-onboarding">' + ic("spark") + "Partir d'un modèle</button>" +
         '<div style="margin-top:10px"><button class="btn btn-quiet" data-action="new-creneau">Ou créer ma première séance</button></div></div>';
     }
-    var html = "", byDay = {}, libres = [];
+    var html = "", byDay = {}, libres = creneauxLibres(), ponctuels = creneauxPonctuels();
     for (var i = 0; i < 7; i++) byDay[i] = [];
-    state.programme.forEach(function (c) { if (c.jour === null) libres.push(c); else byDay[c.jour].push(c); });
+    state.programme.forEach(function (c) { if (!c.date && c.jour !== null) byDay[c.jour].push(c); });
 
-    var total = state.programme.length;
+    var total = state.programme.length - ponctuels.length;
     html += '<div class="section-title"><span>' + total + " séance" + (total > 1 ? "s" : "") + " par semaine</span>" +
       '<button class="link" data-action="open-onboarding">Repartir d\'un modèle</button></div>';
 
@@ -444,6 +489,21 @@
       libres.forEach(function (c) { html += creneauListItem(c); });
       html += "</div>";
     }
+    if (ponctuels.length) {
+      var today = todayISO();
+      var avenir = ponctuels.filter(function (c) { return c.date >= today; });
+      var passees = ponctuels.filter(function (c) { return c.date < today; });
+      if (avenir.length) {
+        html += '<div class="section-title">Séances ponctuelles à venir</div><div class="card">';
+        avenir.forEach(function (c) { html += creneauListItem(c); });
+        html += "</div>";
+      }
+      if (passees.length) {
+        html += '<div class="section-title">Ponctuelles passées</div><div class="card">';
+        passees.forEach(function (c) { html += creneauListItem(c); });
+        html += "</div>";
+      }
+    }
     return html + fabHTML("new-creneau", "Séance");
   }
 
@@ -452,7 +512,9 @@
     if (!a) return "";
     return '<div class="list-item">' +
       '<div class="avatar" style="background:' + a.couleur + '22">' + a.emoji + "</div>" +
-      '<div class="info"><div class="t">' + esc(a.nom) + '</div><div class="s">' +
+      '<div class="info"><div class="t">' + esc(a.nom) +
+      (c.date ? ' <span class="pill neutre">' + WEEKDAYS_SHORT[jourIdx(parseISO(c.date))] + " " + dLabel(parseISO(c.date)) + "</span>" : "") +
+      '</div><div class="s">' +
       "Objectif " + fmtVal(c.valeur, a.unite) + (c.note ? " · " + esc(c.note) : "") + "</div></div>" +
       '<div class="actions">' +
       '<button class="ghost-btn" data-action="edit-creneau" data-id="' + c.id + '" aria-label="Modifier">' + ic("pencil") + "</button>" +
@@ -506,10 +568,12 @@
   function modalHTML() {
     var m = state.modal;
     if (!m) return "";
-    if (m.type === "creneau") return sheet(m.data && m.data.id ? "Modifier la séance" : "Nouvelle séance", "Elle reviendra chaque semaine", creneauFormHTML(m.data));
+    if (m.type === "creneau") return sheet(m.data && m.data.id ? "Modifier la séance" : "Nouvelle séance", "Chaque semaine, ou une seule fois", creneauFormHTML(m.data));
     if (m.type === "journal") return sheet(m.data && m.data.id ? "Modifier la séance" : "Logger une séance", "Ce que tu as vraiment fait", journalFormHTML(m.data));
     if (m.type === "settings") return sheet("Réglages", null, settingsHTML());
     if (m.type === "onboarding") return sheet("Par où on commence ?", "Tu pourras tout modifier après", onboardingHTML());
+    if (m.type === "activites") return sheet("Mes activités", "Touche une activité pour la modifier", activitesListHTML());
+    if (m.type === "activite") return sheet(m.data ? "Modifier l’activité" : "Nouvelle activité", null, activiteFormHTML(m.data));
     return "";
   }
 
@@ -539,16 +603,20 @@
   }
 
   function creneauFormHTML(data) {
-    data = data || { id: null, jour: jourIdx(todayDate()), activiteId: state.activites[0] ? state.activites[0].id : "", valeur: "", note: "" };
+    data = data || { id: null, jour: jourIdx(todayDate()), activiteId: state.activites[0] ? state.activites[0].id : "", valeur: "", note: "", date: null };
+    var once = !!data.date;
     var jourBtns = "";
     for (var i = 0; i < 7; i++) {
-      jourBtns += '<button type="button" class="' + (data.jour === i ? "sel" : "") + '" data-pick-jour="' + i + '">' + WEEKDAYS_SHORT[i] + "</button>";
+      jourBtns += '<button type="button" class="' + (!once && data.jour === i ? "sel" : "") + '" data-pick-jour="' + i + '">' + WEEKDAYS_SHORT[i] + "</button>";
     }
-    jourBtns += '<button type="button" class="wide ' + (data.jour === null ? "sel" : "") + '" data-pick-jour="null">Au choix, sans jour fixe</button>';
+    jourBtns += '<button type="button" class="wide ' + (!once && data.jour === null ? "sel" : "") + '" data-pick-jour="null">Au choix, sans jour fixe</button>';
+    jourBtns += '<button type="button" class="wide ' + (once ? "sel" : "") + '" data-pick-jour="once">Une seule fois, à une date</button>';
     var a = activiteById(data.activiteId) || {};
     return '<form data-form="creneau" data-id="' + (data.id || "") + '">' +
-      '<div class="field"><label>Quel jour ?</label><div class="day-select">' + jourBtns + "</div>" +
-      '<input type="hidden" name="jour" id="jour-hidden" value="' + (data.jour === null ? "" : data.jour) + '"></div>' +
+      '<div class="field"><label>Quand ?</label><div class="day-select">' + jourBtns + "</div>" +
+      '<input type="hidden" name="jour" id="jour-hidden" value="' + (once ? "once" : (data.jour === null ? "" : data.jour)) + '">' +
+      '<div id="once-box" class="once-box' + (once ? "" : " hidden") + '">' +
+      '<input type="date" name="date" id="once-date" value="' + esc(data.date || "") + '" aria-label="Date de la séance"></div></div>' +
       '<div class="field"><label>Activité</label>' + activiteChipSelect(data.activiteId) + "</div>" +
       '<div class="field"><label>Objectif <span id="valeur-unit" class="unit-badge">en ' + (a.unite === "km" ? "km" : "minutes") + '</span></label>' +
       '<input type="number" step="0.5" min="0" name="valeur" inputmode="decimal" placeholder="20" value="' + esc(data.valeur) + '" required></div>' +
@@ -598,11 +666,58 @@
     return h;
   }
 
+  function activitesListHTML() {
+    var h = '<div class="card" style="box-shadow:none;padding:0 0 4px">';
+    state.activites.forEach(function (a) {
+      var u = activiteUsage(a.id);
+      var used = [];
+      if (u.prog) used.push(u.prog + " au programme");
+      if (u.jour) used.push(u.jour + " au journal");
+      h += '<div class="list-item">' +
+        '<div class="avatar" style="background:' + a.couleur + '22">' + a.emoji + "</div>" +
+        '<button class="entry-main" data-action="edit-activite" data-id="' + a.id + '">' +
+        '<span class="name">' + esc(a.nom) + "</span>" +
+        '<span class="meta">En ' + (a.unite === "km" ? "km" : "minutes") +
+        (used.length ? " \u00b7 " + used.join(" \u00b7 ") : " \u00b7 pas encore utilis\u00e9e") + "</span></button>" +
+        '<button class="ghost-btn danger" data-action="del-activite" data-id="' + a.id + '" aria-label="Supprimer">' + ic("trash") + "</button>" +
+        "</div>";
+    });
+    h += "</div>";
+    h += '<div class="hint" style="margin:4px 0 14px">Supprimer une activit\u00e9 supprime aussi les s\u00e9ances et les entr\u00e9es de journal qui l\u2019utilisent. Annulable juste apr\u00e8s.</div>';
+    h += '<button class="btn btn-secondary btn-block" data-action="new-activite">' + ic("plus") + "Cr\u00e9er une activit\u00e9</button>";
+    return h;
+  }
+
+  function activiteFormHTML(data) {
+    data = data || { id: null, nom: "", emoji: "", unite: "min", couleur: PALETTE[0] };
+    var swatches = PALETTE.map(function (col) {
+      return '<button type="button" class="' + (data.couleur === col ? "sel" : "") + '" data-pick-couleur="' + col +
+        '" style="background:' + col + '" aria-label="Couleur"></button>';
+    }).join("");
+    var u = data.id ? activiteUsage(data.id) : { prog: 0, jour: 0 };
+    return '<form data-form="activite" data-id="' + (data.id || "") + '">' +
+      '<div class="field"><label>Emoji et nom</label><div class="row2">' +
+      '<input type="text" name="emoji" maxlength="4" value="' + esc(data.emoji) + '" placeholder="\ud83e\udd4a" style="flex:0 0 66px;text-align:center" aria-label="Emoji">' +
+      '<input type="text" name="nom" value="' + esc(data.nom) + '" placeholder="Nom (ex : Boxe)" style="flex:2" required aria-label="Nom"></div></div>' +
+      '<div class="field"><label>Unit\u00e9</label><select name="unite">' +
+      '<option value="min"' + (data.unite === "min" ? " selected" : "") + ">se compte en minutes</option>" +
+      '<option value="km"' + (data.unite === "km" ? " selected" : "") + ">se compte en kilom\u00e8tres</option></select>" +
+      (u.prog || u.jour ? '<div class="hint">Changer l\u2019unit\u00e9 ne convertit pas les valeurs d\u00e9j\u00e0 enregistr\u00e9es.</div>' : "") + "</div>" +
+      '<div class="field"><label>Couleur</label><div class="color-select">' + swatches + "</div>" +
+      '<input type="hidden" name="couleur" id="couleur-hidden" value="' + esc(data.couleur) + '"></div>' +
+      '<button class="btn btn-primary btn-block" type="submit">' + (data.id ? "Enregistrer" : "Cr\u00e9er") + "</button>" +
+      '<div style="margin-top:8px"><button type="button" class="btn btn-quiet btn-block" data-action="open-activites">Retour \u00e0 la liste</button></div>' +
+      "</form>";
+  }
+
   function settingsHTML() {
     var t = getTheme();
     function sg(v, l) { return '<button type="button" class="' + (t === v ? "sel" : "") + '" data-set-theme="' + v + '">' + l + "</button>"; }
     return '<div class="field"><label>Apparence</label><div class="seg">' +
       sg("auto", "Auto") + sg("light", "Clair") + sg("dark", "Sombre") + "</div></div>" +
+      '<div class="field"><label>Activit\u00e9s</label>' +
+      '<button class="btn btn-secondary btn-block" data-action="open-activites">' + ic("dumbbell") +
+      "G\u00e9rer mes activit\u00e9s (" + state.activites.length + ")</button></div>" +
       '<div class="field"><label>Mes données</label>' +
       '<button class="btn btn-secondary btn-block" data-action="export">' + ic("down") + "Exporter (fichier JSON)</button>" +
       '<div style="margin-top:8px"><label for="import-file" class="btn btn-secondary btn-block" style="cursor:pointer">' + ic("up") + "Importer un fichier</label>" +
@@ -662,6 +777,35 @@
     toast("Programme « " + p.nom + " » appliqué");
   }
 
+  function activiteUsage(id) {
+    return {
+      prog: state.programme.filter(function (c) { return c.activiteId === id; }).length,
+      jour: state.journal.filter(function (e) { return e.activiteId === id; }).length
+    };
+  }
+
+  function delActivite(id) {
+    var a = activiteById(id);
+    if (!a) return;
+    if (state.activites.length <= 1) { toast("Il faut garder au moins une activit\u00e9"); return; }
+    var u = activiteUsage(id);
+    if (u.prog || u.jour) {
+      var parts = [];
+      if (u.prog) parts.push(u.prog + " s\u00e9ance" + (u.prog > 1 ? "s" : "") + " du programme");
+      if (u.jour) parts.push(u.jour + " entr\u00e9e" + (u.jour > 1 ? "s" : "") + " du journal");
+      if (!confirm("\u00ab " + a.nom + " \u00bb est utilis\u00e9e par " + parts.join(" et ") + ".\n\nTout supprimer ?")) return;
+    }
+    var snap = { a: state.activites.slice(), p: state.programme.slice(), j: state.journal.slice() };
+    state.activites = state.activites.filter(function (x) { return x.id !== id; });
+    state.programme = state.programme.filter(function (c) { return c.activiteId !== id; });
+    state.journal = state.journal.filter(function (e) { return e.activiteId !== id; });
+    save(); R();
+    toast("\u00ab " + a.nom + " \u00bb supprim\u00e9e", "Annuler", function () {
+      state.activites = snap.a; state.programme = snap.p; state.journal = snap.j;
+      save(); R();
+    });
+  }
+
   function addActivite() {
     var nom = (document.getElementById("na-nom").value || "").trim();
     var emoji = (document.getElementById("na-emoji").value || "").trim() || "🏃";
@@ -684,7 +828,8 @@
       var jr = fd.get("jour");
       state.modal.data = {
         id: form.getAttribute("data-id") || null,
-        jour: jr === "" || jr === null ? null : Number(jr),
+        jour: jr === "once" || jr === "" || jr === null ? null : Number(jr),
+        date: jr === "once" ? (fd.get("date") || null) : null,
         activiteId: fd.get("activiteId"), valeur: fd.get("valeur"), note: fd.get("note")
       };
     } else if (type === "journal") {
@@ -748,12 +893,16 @@
       if (action === "toast-action") { var cb = toastCb; toastCb = null; var el = document.getElementById("toast"); if (el) el.remove(); if (cb) cb(); return; }
       if (action === "close-modal") { state.modal = null; R(); return; }
       if (action === "tab") { state.tab = t.getAttribute("data-tab"); state.weekOffset = 0; window.scrollTo(0, 0); R(); return; }
-      if (action === "week") { state.weekOffset = Math.min(0, state.weekOffset + Number(t.getAttribute("data-dir"))); state.openDay = null; R(); return; }
+      if (action === "week") { state.weekOffset += Number(t.getAttribute("data-dir")); state.openDay = null; R(); return; }
       if (action === "toggle-day") { state.openDay = state.openDay === date ? "" : date; R(); return; }
       if (action === "open-settings") { state.modal = { type: "settings" }; R(); return; }
       if (action === "open-onboarding") { state.modal = { type: "onboarding" }; R(); return; }
       if (action === "apply-pack") { applyPack(t.getAttribute("data-pack")); return; }
       if (action === "new-creneau") { state.modal = { type: "creneau", data: null }; R(); return; }
+      if (action === "plan-day") {
+        state.modal = { type: "creneau", data: { id: null, jour: null, date: date, activiteId: state.activites[0].id, valeur: "", note: "" } };
+        R(); return;
+      }
       if (action === "new-journal") {
         state.modal = { type: "journal", data: date ? { id: null, date: date, activiteId: state.activites[0].id, valeur: "", note: "", ressenti: null, creneauId: null } : null };
         R(); return;
@@ -782,6 +931,10 @@
         return;
       }
       if (action === "add-activite") { addActivite(); return; }
+      if (action === "open-activites") { state.modal = { type: "activites" }; R(); return; }
+      if (action === "new-activite") { state.modal = { type: "activite", data: null }; R(); return; }
+      if (action === "edit-activite") { state.modal = { type: "activite", data: activiteById(id) }; R(); return; }
+      if (action === "del-activite") { delActivite(id); return; }
       if (action === "export") { exportData(); return; }
       if (action === "reset") { resetData(); return; }
       return;
@@ -794,11 +947,25 @@
       th.classList.add("sel");
       return;
     }
+    var pc = ev.target.closest("[data-pick-couleur]");
+    if (pc) {
+      document.querySelectorAll(".color-select button").forEach(function (b) { b.classList.remove("sel"); });
+      pc.classList.add("sel");
+      document.getElementById("couleur-hidden").value = pc.getAttribute("data-pick-couleur");
+      return;
+    }
     var pj = ev.target.closest("[data-pick-jour]");
     if (pj) {
       document.querySelectorAll(".day-select button").forEach(function (b) { b.classList.remove("sel"); });
       pj.classList.add("sel");
-      document.getElementById("jour-hidden").value = pj.getAttribute("data-pick-jour") === "null" ? "" : pj.getAttribute("data-pick-jour");
+      var mode = pj.getAttribute("data-pick-jour");
+      document.getElementById("jour-hidden").value = mode === "null" ? "" : mode;
+      var box = document.getElementById("once-box");
+      if (box) {
+        box.classList.toggle("hidden", mode !== "once");
+        var di = document.getElementById("once-date");
+        if (mode === "once" && di && !di.value) di.value = todayISO();
+      }
       return;
     }
     var pa = ev.target.closest("[data-pick-activite]");
@@ -829,22 +996,44 @@
     ev.preventDefault();
     var type = form.getAttribute("data-form");
     var fd = new FormData(form);
+    if (type === "activite") {
+      var nomA = (fd.get("nom") || "").trim();
+      if (!nomA) { toast("Donne un nom \u00e0 l\u2019activit\u00e9"); return; }
+      var idA = form.getAttribute("data-id");
+      var payloadA = {
+        id: idA || uid(), nom: nomA,
+        emoji: (fd.get("emoji") || "").trim() || "\ud83c\udfc3",
+        unite: fd.get("unite") === "km" ? "km" : "min",
+        couleur: fd.get("couleur") || PALETTE[0]
+      };
+      if (idA) state.activites = state.activites.map(function (a) { return a.id === idA ? payloadA : a; });
+      else state.activites.push(payloadA);
+      state.modal = { type: "activites" };
+      save(); R();
+      toast(idA ? "Activit\u00e9 mise \u00e0 jour" : "Activit\u00e9 cr\u00e9\u00e9e");
+      return;
+    }
+
     var activiteId = fd.get("activiteId");
-    if (!activiteId) { toast("Choisis une activité"); return; }
+    if (!activiteId) { toast("Choisis une activit\u00e9"); return; }
 
     if (type === "creneau") {
       var jr = fd.get("jour");
       var id = form.getAttribute("data-id");
+      var dateOnce = jr === "once" ? (fd.get("date") || "") : "";
+      if (jr === "once" && !dateOnce) { toast("Choisis une date"); return; }
       var payload = {
         id: id || uid(),
-        jour: jr === "" || jr === null ? null : Number(jr),
+        jour: jr === "once" || jr === "" || jr === null ? null : Number(jr),
+        date: dateOnce || null,
         activiteId: activiteId, valeur: fd.get("valeur"), note: (fd.get("note") || "").trim()
       };
       if (id) state.programme = state.programme.map(function (c) { return c.id === id ? payload : c; });
       else state.programme.push(payload);
       state.onboarded = true; state.modal = null;
+      if (payload.date) { state.tab = "semaine"; state.weekOffset = weekOffsetOf(payload.date); state.openDay = payload.date; }
       save(); R();
-      toast(id ? "Séance mise à jour" : "Ajoutée au programme");
+      toast(id ? "Séance mise à jour" : (payload.date ? "Séance planifiée" : "Ajoutée au programme"));
       return;
     }
 

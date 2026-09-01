@@ -310,9 +310,9 @@ button { color: inherit; }
 .entry { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .entry:last-child { border-bottom: none; }
 .entry-main { flex: 1; min-width: 0; background: none; border: none; text-align: left; cursor: pointer; padding: 0; }
-.entry .name { font-weight: 700; font-size: .92rem; display: flex; align-items: center; gap: 7px; letter-spacing: -.01em; }
-.entry .meta { display: block; font-size: .78rem; color: var(--ink-2); margin-top: 2px; font-weight: 600; }
-.entry .note { display: block; font-size: .82rem; margin-top: 5px; color: var(--ink-2); line-height: 1.4; }
+.entry-main .name, .entry .name { font-weight: 700; font-size: .92rem; display: flex; align-items: center; gap: 7px; letter-spacing: -.01em; }
+.entry-main .meta, .entry .meta { display: block; font-size: .78rem; color: var(--ink-2); margin-top: 2px; font-weight: 600; }
+.entry-main .note, .entry .note { display: block; font-size: .82rem; margin-top: 5px; color: var(--ink-2); line-height: 1.4; }
 .pill {
   display: inline-flex; align-items: center; gap: 4px; font-size: .66rem; font-weight: 800;
   text-transform: uppercase; letter-spacing: .05em; padding: 3px 7px; border-radius: 999px;
@@ -412,7 +412,7 @@ button { color: inherit; }
 .field textarea { resize: vertical; min-height: 66px; line-height: 1.45; }
 .field .row2 { display: flex; gap: 10px; }
 .field .row2 > * { flex: 1; }
-.field .hint { font-size: .75rem; color: var(--ink-3); margin-top: 7px; font-weight: 600; }
+.hint, .field .hint { font-size: .75rem; color: var(--ink-3); margin-top: 7px; font-weight: 600; }
 
 .chip-select { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip-select button {
@@ -489,3 +489,28 @@ button { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ---------------- séances planifiées à venir ---------------- */
+.slot-check.futur {
+  border-style: dashed; border-color: var(--line-strong); background: var(--surface-2);
+  color: var(--ink); font-size: 1.05rem; line-height: 1;
+}
+.slot.is-futur .slot-name { color: var(--ink); }
+.slot.is-futur .slot-sub { color: var(--ink-2); }
+.once-box { }
+.once-box.hidden { display: none; }
+.once-box input[type=date] {
+  width: 100%; border: 1.5px solid var(--accent); border-radius: var(--r-sm);
+  padding: 12px 13px; font-size: 16px; background: var(--surface-2); color: var(--ink); font-weight: 600;
+}
+.pill.neutre { background: var(--surface-2); color: var(--ink-2); margin-left: 6px; }
+
+/* ---------------- sélecteur de couleur ---------------- */
+.color-select { display: flex; flex-wrap: wrap; gap: 12px; }
+.color-select button {
+  width: 34px; height: 34px; border-radius: 50%; border: none; padding: 0; cursor: pointer;
+  transition: transform .12s ease;
+}
+.color-select button:active { transform: scale(.9); }
+.color-select button.sel { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--ink); }
+.ring .fg.plan { stroke: var(--hero-ink-2); }

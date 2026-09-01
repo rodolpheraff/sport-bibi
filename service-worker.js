@@ -1,4 +1,4 @@
-var VERSION = "v2";
+var VERSION = "v3";
 var CACHE = "sport-bibi-" + VERSION;
 var ASSETS = [
   "./",
