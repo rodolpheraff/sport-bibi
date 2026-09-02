@@ -15,7 +15,7 @@
   ];
 
   var ACTIVITES_DEFAULT = [
-    { id: "corde", nom: "Corde à sauter", emoji: "🪢", couleur: "#ef4f2b", unite: "min" },
+    { id: "corde", nom: "Corde à sauter", emoji: "🪢", couleur: "#c4557a", unite: "min" },
     { id: "pilates", nom: "Pilates", emoji: "🤸", couleur: "#0f7f6b", unite: "min" },
     { id: "running", nom: "Running", emoji: "🏃", couleur: "#e08a1e", unite: "km" },
     { id: "muscu", nom: "Muscu", emoji: "🏋️", couleur: "#4f63d2", unite: "min" },
@@ -24,7 +24,7 @@
     { id: "marche", nom: "Marche", emoji: "🚶", couleur: "#7d8471", unite: "min" },
     { id: "natation", nom: "Natation", emoji: "🏊", couleur: "#2f7fd4", unite: "min" }
   ];
-  var PALETTE = ["#ef4f2b", "#0f7f6b", "#e08a1e", "#4f63d2", "#b063cf", "#1f9bbd", "#7d8471", "#2f7fd4"];
+  var PALETTE = ["#c4557a", "#0f7f6b", "#e08a1e", "#4f63d2", "#b063cf", "#1f9bbd", "#7d8471", "#2f7fd4"];
   var UNITES = { min: "min", km: "km" };
 
   var PACKS = [
@@ -104,7 +104,7 @@
     else root.setAttribute("data-theme", t);
     var dark = t === "dark" || (t === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", dark ? "#131110" : "#faf7f3");
+    if (meta) meta.setAttribute("content", dark ? "#12160f" : "#f7f8f4");
   }
   function setTheme(t) { try { localStorage.setItem(LS_THEME, t); } catch (e) {} applyTheme(t); }
 
